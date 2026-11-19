@@ -7,4 +7,5 @@ from guardrails.input_guardrails import (
 from guardrails.output_guardrails import content_filter, llm_safety_check, OutputGuardrailPlugin
 
 # NeMo is optional — don't re-export to avoid ImportError when nemoguardrails is not installed.
-# Use: from guardrails.nemo_guardrails import init_nemo, test_nemo_guardrails
+# Use: from guardrails.nemo_guardrails import NemoGuardrailPlugin, NemoBlueGuard
+# Pipeline: build_production_plugins(use_nemo=True) · CLI: python src/main.py --part 3 --nemo

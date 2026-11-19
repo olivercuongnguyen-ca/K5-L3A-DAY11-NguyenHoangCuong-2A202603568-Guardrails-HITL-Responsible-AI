@@ -51,10 +51,11 @@ async def part2_guardrails():
     print("(LLM-as-Judge / NeMo — optional, skipped)")
 
 
-async def part3_assignment_suite():
+async def part3_assignment_suite(use_nemo: bool = False):
     """Checkpoint 3: defense suite → outputs/results.json."""
     print("\n" + "=" * 60)
-    print("CHECKPOINT 3: Assignment suite → outputs/*.json")
+    print("CHECKPOINT 3: Assignment suite → outputs/*.json"
+          + ("  (+ NeMo Guardrails layer)" if use_nemo else ""))
     print("=" * 60)
 
     from assignment.pipeline import (
@@ -64,7 +65,7 @@ async def part3_assignment_suite():
     )
 
     try:
-        plugins = build_production_plugins(use_llm_judge=False)
+        plugins = build_production_plugins(use_llm_judge=False, use_nemo=use_nemo)
         audit, monitor = build_observability()
         pipeline = {"plugins": plugins, "audit": audit, "monitor": monitor}
         result = await run_assignment_suite(pipeline)
@@ -133,7 +134,7 @@ async def part4_attacks():
     }
 
 
-async def main(parts=None):
+async def main(parts=None, use_nemo: bool = False):
     setup_api_key()
 
     if parts is None:
@@ -143,7 +144,7 @@ async def main(parts=None):
         if part == 2:
             await part2_guardrails()
         elif part == 3:
-            await part3_assignment_suite()
+            await part3_assignment_suite(use_nemo=use_nemo)
         elif part == 4:
             await part4_attacks()
         else:
@@ -167,9 +168,14 @@ if __name__ == "__main__":
         choices=[2, 3, 4],
         help="2=CP2 guardrails · 3=CP3 suite · 4=CP4 red-team",
     )
+    parser.add_argument(
+        "--nemo",
+        action="store_true",
+        help="CP3: add the optional NeMo Guardrails layer to the Blue pipeline",
+    )
     args = parser.parse_args()
 
     if args.part:
-        asyncio.run(main(parts=[args.part]))
+        asyncio.run(main(parts=[args.part], use_nemo=args.nemo))
     else:
-        asyncio.run(main())
+        asyncio.run(main(use_nemo=args.nemo))

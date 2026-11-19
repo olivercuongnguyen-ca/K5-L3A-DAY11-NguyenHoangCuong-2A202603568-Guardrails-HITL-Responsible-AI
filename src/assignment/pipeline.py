@@ -84,24 +84,33 @@ def build_production_plugins(
     max_requests: int = 10,
     window_seconds: int = 60,
     use_llm_judge: bool = False,
+    use_nemo: bool = False,
 ) -> list:
     """Return an ordered list of plugins / layers:
 
     1. RateLimitPlugin
     2. InputGuardrailPlugin  (from guardrails.input_guardrails)
-    3. OutputGuardrailPlugin  (from guardrails.output_guardrails)
-       (LLM-as-Judge / NeMo are optional)
+    3. NemoGuardrailPlugin   (optional, ``use_nemo=True`` — guardrails.nemo_guardrails)
+    4. OutputGuardrailPlugin  (from guardrails.output_guardrails)
+       (LLM-as-Judge is optional)
 
     Order matters: the cheapest check runs first (rate limit), and nothing that
-    touches the LLM runs before the input guard. Audit/monitoring are side
-    observers (see ``build_observability``), not plugins in this list.
-    The action gateway calls ``is_egress_allowed`` separately before any sink.
+    touches the LLM runs before the input guard. NeMo sits after the regex input
+    guard (so obvious attacks never cost a self-check call) and its output rail runs
+    before regex redaction (so a leaked secret withholds the whole reply).
+    Audit/monitoring are side observers (see ``build_observability``), not plugins
+    in this list. The action gateway calls ``is_egress_allowed`` separately before any sink.
     """
-    return [
+    plugins = [
         RateLimitPlugin(max_requests=max_requests, window_seconds=window_seconds),
         InputGuardrailPlugin(),
-        OutputGuardrailPlugin(use_llm_judge=use_llm_judge),
     ]
+    if use_nemo:
+        from guardrails.nemo_guardrails import NemoGuardrailPlugin
+
+        plugins.append(NemoGuardrailPlugin())
+    plugins.append(OutputGuardrailPlugin(use_llm_judge=use_llm_judge))
+    return plugins
 
 
 def build_observability():
@@ -176,17 +185,25 @@ async def process_request(
         llm_response = SimpleNamespace(
             content=types.Content(role="model", parts=[types.Part.from_text(text=response)])
         )
+        changed_by = None  # first post-LLM layer that altered the reply
         for plugin in plugins:
             cb = getattr(plugin, "after_model_callback", None)
             if cb is None:
                 continue
+            before = _content_text(llm_response.content)
             out = await _call(cb, callback_context=ctx, llm_response=llm_response)
             if out is not None:
                 llm_response = out
+            if changed_by is None and _content_text(llm_response.content) != before:
+                changed_by = plugin.name
         response = _content_text(llm_response.content) or response
         if response != original:
-            redacted, layer = True, "output_guardrail"
-            blocked = bool(issue_types & _CREDENTIAL_ISSUES)  # credential stopped = block
+            layer = changed_by or "output_guardrail"
+            if layer == "nemo_guardrail":
+                blocked = True  # NeMo output rail withheld the whole reply
+            else:
+                redacted = True
+                blocked = bool(issue_types & _CREDENTIAL_ISSUES)  # credential stopped = block
 
     audit.record_output(
         user_id=user_id, text=response, blocked=blocked, layer=layer, request_id=request_id
