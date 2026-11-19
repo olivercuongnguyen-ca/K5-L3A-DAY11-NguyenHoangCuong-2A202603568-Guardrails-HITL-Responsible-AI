@@ -6,6 +6,65 @@
 
 ---
 
+## 👤 Thông tin bài nộp
+
+| | |
+|---|---|
+| **Họ tên** | Nguyễn Hoàng Cương |
+| **MSSV** | 2A202603568 |
+| **Lớp** | K5 — L3A — Day 11 |
+| **Repo** | `K5-L3A-DAY11-NguyenHoangCuong-2A202603568-Guardrails-HITL-Responsible-AI` |
+| **Bonus chọn** | **B1** — leak **Red** (tối đa +5) |
+| **Red / Red Advance** | `openai` / `gpt-4o-mini` (model lab mặc định) |
+| **Blue** | Liquid `lfm3-1.7b` (key `LIQUID_API_KEY`) |
+
+### Cách chạy nhanh (macOS / Linux)
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Điền vào .env:
+#   LIQUID_API_KEY=...        (Blue — src/core/config.py đọc biến này)
+#   RED_TEAM_PROVIDER=openai
+#   OPENAI_API_KEY=...        OPENAI_MODEL=gpt-4o-mini
+
+python src/main.py --part 2           # CP2 — guardrails input/output (in terminal)
+python src/main.py --part 3           # CP3 — pipeline → outputs/results.json, audit_log.json, metrics.json
+python src/main.py --part 3 --nemo    # CP3 + lớp NeMo cho Blue (tuỳ chọn)
+python src/main.py --part 4           # CP4 — Red + Red Advance → outputs/attack_results.json
+
+pytest tests/smoke -q && pytest tests/public -q
+python scripts/grade.py --submission-dir . --out outputs/grade_report.json   # tự sinh lab_report.md
+```
+
+Windows: thay `source .venv/bin/activate` bằng `.\.venv\Scripts\Activate.ps1` và `cp` bằng `Copy-Item`.
+
+### Kết quả (từ `outputs/`)
+
+- **Blue (`results.json`):** safe bị chặn nhầm `0/9` · attack bị chặn `10/10` · edge case bị chặn `4/7` · rate limit chặn `5/15` — khớp schema, public tests pass.
+- **Red Team (`attack_results.json`):** Red leak `5/5` · Red Advance leak `0/5`.
+
+### Bonus: B1 (Red)
+
+Chọn **B1** — tấn công **Red** (`create_red_agent_default`) trên `gpt-4o-mini`: cả 5 prompt trong `src/attacks/attacks.py` (completion, dịch/đổi format, hypothetical, confirmation, multi-step) đều leak giá trị từ `data/protected/vinbank_secrets.json` (`leaked: true` trong `unsafe_attacks`). Không nhận B2 vì Red Advance không bị leak (`0/5`).
+
+### NeMo Guardrails cho Blue (tuỳ chọn — không chấm)
+
+`src/guardrails/nemo_guardrails.py` thêm `NemoGuardrailPlugin` vào pipeline Blue khi bật `use_nemo=True` (`python src/main.py --part 3 --nemo`):
+
+```text
+RateLimit → InputGuardrail (regex) → NeMo input rails → Blue LLM → NeMo output rails → OutputGuardrail (redact)
+```
+
+- **Input rails:** blue protected value check → blue attack pattern check (đổi vai, encoding, injection tiếng Việt) → self check input (Blue LLM).
+- **Output rails:** blue leak check (giải mã base64 / hex / ROT13 / đảo ngược) → self check output (Blue LLM).
+- NeMo chạy chế độ "rails only" (`LLMRails.check_async`), dùng **cùng** model Blue; lỗi NeMo → chặn (fail-closed).
+- NeMo đặt sau regex input (tấn công lộ liễu không tốn lượt self-check) và trước regex output (secret lộ → giữ lại toàn bộ câu trả lời).
+- `outputs/results.json` nộp chấm được sinh **không** bật `--nemo` (`layers`: rate_limiter, input_guardrail, output_guardrail).
+
+---
+
 ## Thời lượng
 
 | Phần | Thời gian |
