@@ -27,10 +27,10 @@ from core.utils import chat_with_agent
 # Return a dict with:
 # - "safe": True/False
 # - "issues": list of problems found
-# - "redacted": cleaned response (PII replaced with 💩)
+# - "redacted": cleaned response (PII replaced with [REDACTED])
 # ============================================================
 
-REDACTED = "💩"
+REDACTED = "[REDACTED]"
 
 # Contact details the bank publishes on purpose — never redact these.
 _OFFICIAL_EMAILS = {"support@vinbank.example"}
@@ -195,7 +195,7 @@ def _redact_known_secrets(text: str) -> tuple[str, int]:
 def content_filter(response: str) -> dict:
     """Filter response for PII, secrets, and harmful content.
 
-    Detects and replaces with ``💩``: VN phone numbers, emails, CCCD/CMND,
+    Detects and replaces with ``[REDACTED]``: VN phone numbers, emails, CCCD/CMND,
     card numbers (Luhn), API keys / tokens (``sk-…``, JWT, AWS/GitHub), passwords
     (``password=…``, ``password is …``, ``mật khẩu là …``), internal hostnames, and
     the lab's known secrets even when obfuscated or encoded.
